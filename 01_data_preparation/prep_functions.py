@@ -364,7 +364,37 @@ if __name__ == "__main__":
 ## Concept mapping
 def add_concept_mapping(df):
     """Add concept mapping based on item_id"""
-    df['concept'] = np.nan
+    # Create `item_id` and `vignette_id` from numeric columns when missing
+    if 'item_id' not in df.columns:
+        if 'item' in df.columns:
+            df['item_id'] = df['item'].astype(str).apply(lambda x: f"item_{x}")
+        else:
+            df['item_id'] = np.nan
+
+    if 'vignette_id' not in df.columns:
+        if 'vignr' in df.columns:
+            df['vignette_id'] = df['vignr'].astype(str)
+        elif 'vignette' in df.columns:
+            df['vignette_id'] = df['vignette'].astype(str)
+        else:
+            df['vignette_id'] = np.nan
+
+    # initialize concept column as object dtype so we can assign strings safely
+    df['concept'] = pd.Series(index=df.index, dtype=object)
+
+    # If the dataset uses a simple 1-4 coding for `item`, map directly to broad concepts
+    # 1 -> Admiration (ADM), 2 -> Envy (ENV), 3 -> Pity (PIT), 4 -> Contempt (CON)
+    try:
+        if 'item' in df.columns:
+            item_nums = pd.to_numeric(df['item'], errors='coerce').dropna().unique().astype(int)
+            if set(item_nums).issubset({1, 2, 3, 4}):
+                map_simple = {1: 'ADM', 2: 'ENV', 3: 'PIT', 4: 'CON'}
+                df['concept'] = pd.to_numeric(df['item'], errors='coerce').map(lambda x: map_simple.get(int(x)) if pd.notna(x) else None)
+                print('Applied simple item(1-4) -> concept mapping')
+                return df
+    except Exception:
+        # Fall back to the more detailed mapping below
+        pass
     
     # Active
     df.loc[df['item_id'].isin(["item_1", "item_13", "item_29", "item_49", "item_51"]), 'concept'] = "AF"
@@ -432,20 +462,25 @@ def recode_demographic_columns(df, df_name=""):
     
     # Explizite, theoretisch sinnvolle Referenzkategorien
     if 'race' in df.columns:
-        df['race_cat'] = pd.Categorical(df['race'], categories=['white', 'Black', 'asian'])
-        print(f"   Race categories (white=reference): {df['race_cat'].cat.categories.tolist()}")
+        # Ensure 'not_mentioned' is present and used as reference category
+        race_cats = ['not_mentioned', 'White', 'Black', 'Asian']
+        df['race_cat'] = pd.Categorical(df['race'].fillna('not_mentioned'), categories=race_cats)
+        print(f"   Race categories (not_mentioned=reference): {df['race_cat'].cat.categories.tolist()}")
 
     if 'religion' in df.columns:
-        df['religion_cat'] = pd.Categorical(df['religion'], categories=['christian', 'muslim', 'jewish'])
-        print(f"   Religion categories (christian=reference): {df['religion_cat'].cat.categories.tolist()}")
+        religion_cats = ['not_mentioned', 'christian', 'muslim', 'jewish']
+        df['religion_cat'] = pd.Categorical(df['religion'].fillna('not_mentioned'), categories=religion_cats)
+        print(f"   Religion categories (not_mentioned=reference): {df['religion_cat'].cat.categories.tolist()}")
 
     if 'gender' in df.columns:
-        df['gender_cat'] = pd.Categorical(df['gender'], categories=['man', 'woman', 'nonbinary person'])
-        print(f"   Gender categories (man=reference): {df['gender_cat'].cat.categories.tolist()}")
+        gender_cats = ['not_mentioned', 'man', 'woman', 'nonbinary']
+        df['gender_cat'] = pd.Categorical(df['gender'].fillna('not_mentioned'), categories=gender_cats)
+        print(f"   Gender categories (not_mentioned=reference): {df['gender_cat'].cat.categories.tolist()}")
 
     if 'gender_alignment' in df.columns:
-        df['gender_alignment_cat'] = pd.Categorical(df['gender_alignment'], categories=['cis', 'trans'])
-        print(f"   Gender alignment categories (cis=reference): {df['gender_alignment_cat'].cat.categories.tolist()}")
+        ga_cats = ['not_mentioned', 'cis', 'trans']
+        df['gender_alignment_cat'] = pd.Categorical(df['gender_alignment'].fillna('not_mentioned'), categories=ga_cats)
+        print(f"   Gender alignment categories (not_mentioned=reference): {df['gender_alignment_cat'].cat.categories.tolist()}")
 
     # Create clean columns with 'not_mentioned' for NAs
     df['race_clean'] = df['race'].fillna('not_mentioned')
